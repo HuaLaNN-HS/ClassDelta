@@ -1,0 +1,715 @@
+name: Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: '发布标签 (例如 v1.0.0)'
+        required: true
+        type: string
+      primary_version:
+        description: '主发布版本 (例如 1.0.0)'
+        required: true
+        type: string
+      source_ref:
+        description: '手动运行时用于构建的源码 ref（分支/标签）；留空则使用 Run workflow 当前选择的分支'
+        required: false
+        type: string
+        default: ''
+      is_test_mode:
+        description: '是否处于测试发布模式 (跳过 SignPath 签名)'
+        required: false
+        type: boolean
+        default: false
+      enable_android_build:
+        description: '是否执行 Android 打包任务'
+        required: false
+        type: boolean
+        default: true
+      enable_gh_nuget_push:
+        description: '推送 NuGet 包到 GitHub Packages'
+        required: false
+        type: boolean
+        default: true
+      enable_nuget_org_push:
+        description: '推送 NuGet 包到 nuget.org (需要配置 NUGET_ORG_KEY)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PDC_CLIENT_VERSION: 1.0.1.0
+  DOTNET_SDK_VERSION: 10.0.302
+  MACOS_XCODE_PATH: /Applications/Xcode_26.6.app/Contents/Developer
+  LANGUAGE_TAG: "en-us"
+
+  SIGNPATH_ORG_ID: "a9190fa7-b054-4dd5-991c-7669d4a91f0c"
+  SIGNPATH_PROJECT_SLUG: "ciiec-alpha"
+  SIGNPATH_POLICY_SLUG: "ciiec-policy"
+  SIGNPATH_ARTIFACT_CONFIGURATION_SLUG: "aevum01"
+
+  GH_PACKAGES_USER: "HuaLaNN-HS"
+  IS_TEST_MODE: ${{ github.event.inputs.is_test_mode || 'false' }}
+  SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.source_ref || github.ref_name) || github.ref_name }}
+  RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+  PRIMARY_VERSION: ${{ github.event.inputs.primary_version || github.ref_name }}
+
+jobs:
+  # Desktop app bases and already-complete packages.
+  # This matrix intentionally matches the current upstream release workflow:
+  # Windows: x64/x86/arm64, full + selfContained, folder
+  # Linux:   x64/arm64, selfContained, folder + deb
+  # macOS:   x64/arm64, selfContained, pkg
+  build_app:
+    # macOS is not an input to pack_app. Let Windows/Linux packaging continue even
+    # if a macOS matrix leg fails; publish will still require the macOS artifacts.
+    continue-on-error: ${{ matrix.os == 'macos' }}
+    runs-on: ${{ matrix.os == 'linux' && 'ubuntu-24.04' || (matrix.os == 'macos' && 'macos-26' || 'windows-2022') }}
+    env:
+      build_id: appBase_${{ matrix.os }}_${{ matrix.arch }}_${{ matrix.build_type }}_${{ matrix.package }}
+      artifact_name: out_${{ matrix.package == 'folder' && 'appBase' || 'app' }}_${{ matrix.os }}_${{ matrix.arch }}_${{ matrix.build_type }}_${{ matrix.package }}
+      isTestMode: ${{ github.event.inputs.is_test_mode || 'false' }}
+      arch: ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: ['full', 'selfContained']
+        package: ['folder', 'deb']
+        arch: ['x64', 'x86', 'arm64']
+        os: ['windows', 'linux']
+        exclude:
+          - os: linux
+            arch: x86
+          - os: windows
+            package: deb
+          - os: linux
+            build_type: full
+        include:
+          - os: macos
+            package: pkg
+            build_type: selfContained
+            arch: arm64
+          - os: macos
+            package: pkg
+            build_type: selfContained
+            arch: x64
+    name: Build_AppBase_${{ matrix.os }}_${{ matrix.arch }}_${{ matrix.build_type }}_${{ matrix.package }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: List files
+        run: ls
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_VERSION }}
+
+      - name: Pin .NET SDK
+        shell: bash
+        run: |
+          dotnet new globaljson --sdk-version "$DOTNET_SDK_VERSION" --roll-forward disable --force
+          dotnet --info
+          test "$(dotnet --version)" = "$DOTNET_SDK_VERSION"
+
+      - name: Install macOS workload
+        if: ${{ matrix.os == 'macos' }}
+        shell: bash
+        run: |
+          sudo xcode-select -s "$MACOS_XCODE_PATH"
+          xcodebuild -version
+          xcodebuild -showsdks
+          dotnet workload install macos --version "$DOTNET_SDK_VERSION"
+          test "$(dotnet workload --version)" = "$DOTNET_SDK_VERSION"
+
+      - name: Apply legacy macOS target-platform compatibility
+        if: ${{ matrix.os == 'macos' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The legacy CIIEC source uses net8.0-macos15.0. With the .NET 10 SDK,
+          # MSBuild can otherwise resolve TargetPlatformVersion as 1.0 and fail
+          # with NETSDK1135 before compilation. Only apply the override when the
+          # checked-out source actually contains that legacy TFM.
+          if grep -Rqs --include='*.props' --include='*.csproj' 'net8\.0-macos15\.0' .; then
+            echo "TargetPlatformVersion=15.0" >> "$GITHUB_ENV"
+            echo "::notice::Detected legacy net8.0-macos15.0 source; TargetPlatformVersion=15.0 applied."
+          fi
+
+      - name: Add upstream GitHub Package Registry
+        run: dotnet nuget add source --username ClassIsland --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/ClassIsland/index.json"
+
+      - name: Get Git Tag
+        uses: little-core-labs/get-git-tag@v3.0.1
+        id: tagName
+
+      - name: Build App (Nuke)
+        env:
+          buildType: ${{ matrix.build_type }}
+          package: ${{ matrix.package }}
+          is_release: ${{ startsWith(github.ref, 'refs/tags/') }}
+          test_signing_key: ${{ secrets.TEST_SIGNING_KEY }}
+          ApiSigningKey: ${{ secrets.API_SIGNING_KEY }}
+          ApiSigningKeyPs: ${{ secrets.API_SIGNING_KEY_PS }}
+          arch: ${{ matrix.arch }}
+          osName: ${{ matrix.os }}
+          appVersion: ${{ env.RELEASE_TAG }}
+          buildName: ${{ matrix.package == 'folder' && 'appBase' || 'app' }}
+        run: ${{ matrix.os == 'windows' && 'pwsh -ep bypass ./build.ps1 PublishApp' || './build.sh PublishApp' }}
+
+      - name: Upload Unsigned APP to artifacts
+        id: upload-unsigned-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.artifact_name }}
+          path: |
+            ./out/*.zip
+            ./out/*.appx
+            ./out/*.deb
+            ./out/*.pkg
+          if-no-files-found: error
+          retention-days: 5
+
+  # Android is deliberately kept as a separate job, matching upstream.
+  # APK signing is Android keystore signing, not the SignPath/Authenticode phase.
+  build_android:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.enable_android_build != 'false' }}
+    runs-on: ubuntu-24.04
+    env:
+      artifact_name: out_app_android_${{ matrix.arch }}_monoaot_apk
+      arch: ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ['arm64', 'x64']
+    name: Build_Android_${{ matrix.arch }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: Verify Android build support in checked-out source
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! grep -Rqs --include='*.cs' 'PublishAndroidApp' ./build; then
+            echo "::error::The checked-out source ref '${SOURCE_REF}' does not contain the NUKE target PublishAndroidApp."
+            echo "::error::This workflow is the Misha/Android packaging workflow, but the source is an older desktop-only revision."
+            echo "::error::For a manual run, set source_ref to the CIIEC branch synchronized with the upstream Misha preview (normally dev/misha-preview), or disable Android packaging."
+            exit 1
+          fi
+          echo "Android build target found in ${SOURCE_REF}."
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_VERSION }}
+
+      - name: Pin .NET SDK
+        shell: bash
+        run: |
+          dotnet new globaljson --sdk-version "$DOTNET_SDK_VERSION" --roll-forward disable --force
+          dotnet --info
+          test "$(dotnet --version)" = "$DOTNET_SDK_VERSION"
+
+      - name: Install JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install Android workload
+        run: dotnet workload install android
+
+      - name: Add upstream GitHub Package Registry
+        run: dotnet nuget add source --username ClassIsland --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/ClassIsland/index.json"
+
+      - name: Get Git Tag
+        uses: little-core-labs/get-git-tag@v3.0.1
+        id: tagName
+
+      - name: Decode Android keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ANDROID_KEYSTORE_BASE64" ]]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is not configured. Configure Android signing secrets or disable Android packaging for this manual run."
+            exit 1
+          fi
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/ciiec.keystore"
+          test -s "$RUNNER_TEMP/ciiec.keystore"
+
+      - name: Build and sign Android APK
+        env:
+          AndroidKeyStore: true
+          AndroidSigningKeyStore: ${{ runner.temp }}/ciiec.keystore
+          AndroidSigningStorePass: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          AndroidSigningKeyPass: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          AndroidSigningKeyAlias: ${{ vars.ANDROID_KEY_ALIAS }}
+          appVersion: ${{ env.RELEASE_TAG }}
+          arch: ${{ matrix.arch }}
+          osName: android
+          package: apk
+          buildType: monoaot
+          buildName: app
+          isProductionBuild: ${{ github.event_name != 'pull_request' && github.event.inputs.is_test_mode != 'true' && (startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag) }}
+        run: ./build.sh PublishAndroidApp
+
+      - name: Verify Android APK signature
+        shell: bash
+        env:
+          EXPECTED_APPLICATION_ID: ${{ (github.event_name != 'pull_request' && github.event.inputs.is_test_mode != 'true' && (startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag)) && vars.ANDROID_APPLICATION_ID || vars.ANDROID_BETA_APPLICATION_ID }}
+        run: |
+          set -euo pipefail
+          APK_PATH="$(find ./out -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK_PATH"
+
+          APKSIGNER_PATH="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)"
+          test -n "$APKSIGNER_PATH"
+          "$APKSIGNER_PATH" verify --verbose "$APK_PATH"
+
+          if [[ -n "${EXPECTED_APPLICATION_ID:-}" ]]; then
+            AAPT_PATH="$(find "$ANDROID_HOME/build-tools" -type f -name aapt -print | sort -V | tail -n 1)"
+            test -n "$AAPT_PATH"
+            "$AAPT_PATH" dump badging "$APK_PATH" | grep -F "package: name='$EXPECTED_APPLICATION_ID'"
+          else
+            echo "::notice::ANDROID_APPLICATION_ID/ANDROID_BETA_APPLICATION_ID is not configured; package-id verification was skipped."
+          fi
+
+      - name: Remove Android keystore
+        if: ${{ always() }}
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/ciiec.keystore"
+
+      - name: Upload Android APK to artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.artifact_name }}
+          path: ./out/*.apk
+          if-no-files-found: error
+          retention-days: 5
+
+  build_launcher:
+    runs-on: ${{ matrix.os == 'windows' && 'windows-2022' || 'ubuntu-24.04' }}
+    env:
+      build_id: launcher_${{ matrix.os }}_${{ matrix.arch }}_${{ matrix.build_type }}_${{ matrix.package }}
+      artifact_name: out_launcher_${{ matrix.os }}_${{ matrix.arch }}_${{ matrix.build_type }}_${{ matrix.package }}
+      isTestMode: ${{ github.event.inputs.is_test_mode || 'false' }}
+      arch: ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: ['aot']
+        package: ['singleFile']
+        arch: ['x64', 'x86', 'arm64']
+        os: ['windows', 'linux']
+        exclude:
+          - os: linux
+            arch: x86
+    name: Build_Launcher_${{ matrix.os }}_${{ matrix.arch }}_${{ matrix.build_type }}_${{ matrix.package }}
+    container: ${{ matrix.os == 'linux' && 'ghcr.io/classisland/philia-build-image:main' || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: List files
+        run: ls
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_VERSION }}
+
+      - name: Pin .NET SDK
+        shell: bash
+        run: |
+          dotnet new globaljson --sdk-version "$DOTNET_SDK_VERSION" --roll-forward disable --force
+          dotnet --info
+          test "$(dotnet --version)" = "$DOTNET_SDK_VERSION"
+
+      - name: Setup Philia Environment
+        if: ${{ matrix.os == 'linux' }}
+        run: |
+          select-objcopy ${{ matrix.arch }}
+          git config --global --add safe.directory '*'
+
+      - name: Build Launcher (Nuke)
+        env:
+          buildType: ${{ matrix.build_type }}
+          package: ${{ matrix.package }}
+          is_release: ${{ startsWith(github.ref, 'refs/tags/') }}
+          arch: ${{ matrix.arch }}
+          osName: ${{ matrix.os }}
+          buildName: launcher
+        run: ${{ matrix.os == 'windows' && 'pwsh -ep bypass ./build.ps1 PublishLauncher' || './build.sh PublishLauncher' }}
+
+      - name: Upload Unsigned Launcher to artifacts
+        id: upload-unsigned-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.artifact_name }}
+          path: ./out/*.zip
+          if-no-files-found: error
+          retention-days: 5
+
+  # SignPath is intentionally limited to the upstream-style desktop sign bundle.
+  # Android APKs are signed in build_android with the Android keystore.
+  sign_1:
+    name: Sign_Artifacts
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name != 'pull_request' && github.event.inputs.is_test_mode != 'true' }}
+    needs: [ build_app, build_launcher ]
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Check SignPath Token
+        id: check_token
+        shell: bash
+        env:
+          SP_TOKEN: ${{ secrets.SIGNPATH_TOKEN }}
+        run: |
+          echo "skip_sign=false" >> "$GITHUB_OUTPUT"
+          if [[ -z "$SP_TOKEN" ]]; then
+            echo "skip_sign=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::SIGNPATH_TOKEN is empty; SignPath signing will be skipped."
+          fi
+
+      - name: Checkout
+        if: ${{ steps.check_token.outputs.skip_sign != 'true' }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: Get Commit Hash
+        if: ${{ steps.check_token.outputs.skip_sign != 'true' }}
+        uses: prompt/actions-commit-hash@v3
+        id: commit
+        with:
+          prefix: "${{ env.RELEASE_TAG }}+"
+
+      - name: Download artifacts for sign bundle
+        if: ${{ steps.check_token.outputs.skip_sign != 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          path: ./out_artifacts
+
+      - name: Create Sign Bundle
+        if: ${{ steps.check_token.outputs.skip_sign != 'true' }}
+        run: pwsh -ep Bypass -c ./tools/release-gen/create-sign-bundle.ps1
+
+      - name: Upload Sign Bundle to artifacts
+        id: upload-sign-bundle
+        if: ${{ steps.check_token.outputs.skip_sign != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sign-bundle
+          path: ./ci_tmp/sign_bundle/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Sign Application (SignPath Open Source)
+        if: ${{ steps.check_token.outputs.skip_sign != 'true' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: '${{ secrets.SIGNPATH_TOKEN }}'
+          organization-id: '${{ env.SIGNPATH_ORG_ID }}'
+          project-slug: '${{ env.SIGNPATH_PROJECT_SLUG }}'
+          artifact-configuration-slug: '${{ env.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}'
+          signing-policy-slug: '${{ env.SIGNPATH_POLICY_SLUG }}'
+          github-artifact-id: '${{ steps.upload-sign-bundle.outputs.artifact-id }}'
+          wait-for-completion: true
+          output-artifact-directory: './out_signed'
+          parameters: |
+            version: ${{ toJSON(steps.commit.outputs.long) }}
+
+      - name: Upload Signed Files to artifacts
+        if: ${{ steps.check_token.outputs.skip_sign != 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed_artifacts
+          path: ./out_signed/*
+          if-no-files-found: error
+          retention-days: 5
+
+  # Same package matrix as upstream. Installer EXEs are produced as CI artifacts,
+  # but are not included in the public GitHub Release because upstream does not
+  # include *.exe in its release upload glob.
+  pack_app:
+    runs-on: ${{ matrix.os == 'windows' && 'windows-2022' || 'ubuntu-latest' }}
+    needs: [ sign_1, build_app, build_launcher ]
+    if: ${{ always() && needs.build_app.result == 'success' && needs.build_launcher.result == 'success' && needs.sign_1.result != 'failure' && needs.sign_1.result != 'cancelled' }}
+    env:
+      build_id: app_${{ matrix.os }}_${{ matrix.arch }}_${{ matrix.build_type }}_${{ matrix.package }}
+      artifact_name: out_app_${{ matrix.os }}_${{ matrix.arch }}_${{ matrix.build_type }}_${{ matrix.package }}
+      isTestMode: ${{ github.event.inputs.is_test_mode || 'false' }}
+      arch: ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: ['full', 'selfContained']
+        package: ['folder', 'installer']
+        arch: ['x64', 'x86', 'arm64']
+        os: ['windows', 'linux']
+        exclude:
+          - os: linux
+            arch: x86
+          - os: linux
+            package: installer
+          - build_type: full
+            package: installer
+          - os: linux
+            build_type: full
+    name: Pack_App_${{ matrix.os }}_${{ matrix.arch }}_${{ matrix.build_type }}_${{ matrix.package }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./out_artifacts
+
+      - name: Combine Artifacts
+        run: pwsh -ep bypass ./tools/release-gen/combine-artifacts.ps1
+
+      - name: Generate Package
+        env:
+          package: ${{ matrix.package }}
+          isRelease: ${{ startsWith(github.ref, 'refs/tags/') }}
+          arch: ${{ matrix.arch }}
+          osName: ${{ matrix.os }}
+          buildType: ${{ matrix.build_type }}
+        run: pwsh -ep bypass ./tools/release-gen/pack/entry.ps1
+
+      - name: Compile .iss to .exe Installer
+        if: ${{ matrix.os == 'windows' && matrix.package == 'installer' }}
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.7
+        with:
+          path: ./installer/setup.iss
+          options: |
+            /DAppVersion=${{ env.RELEASE_TAG || '2.0.0.0' }}
+            /FCIIEC_app_${{ env.LANGUAGE_TAG }}_${{ matrix.os }}_${{ matrix.arch }}_${{ matrix.build_type }}_installer
+            /O${{ github.workspace }}\out_pack
+            /DSourceDir=${{ github.workspace }}\out_pack\pack
+            /DArch=${{ matrix.arch }}
+
+      - name: Upload Packages and Installer to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.artifact_name }}
+          path: |
+            ${{ github.workspace }}/out_pack/*.zip
+            ${{ github.workspace }}/out_pack/*.exe
+          if-no-files-found: error
+          retention-days: 5
+
+  build_nupkg:
+    runs-on: windows-2022
+    name: Build_NuGet_Packages
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_VERSION }}
+
+      - name: Pin .NET SDK
+        shell: bash
+        run: |
+          dotnet new globaljson --sdk-version "$DOTNET_SDK_VERSION" --roll-forward disable --force
+          dotnet --info
+          test "$(dotnet --version)" = "$DOTNET_SDK_VERSION"
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build NuGet Packages
+        env:
+          is_release: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: ./build.ps1 BuildNupkg --isRelease $env:is_release
+
+      - name: Add GitHub Packages Source
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          dotnet nuget add source --username ${{ env.GH_PACKAGES_USER }} --password ${{ secrets.GITHUB_TOKEN }} `
+          --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ env.GH_PACKAGES_USER }}/index.json"
+
+      - name: Push to GitHub Packages
+        if: ${{ github.event.inputs.enable_gh_nuget_push != 'false' && github.event_name != 'pull_request' }}
+        env:
+          GHPKG_KEY: ${{ secrets.GITHUB_TOKEN }}
+        run: dotnet nuget push .\out\package\release\*.nupkg -k $env:GHPKG_KEY --source "github" --skip-duplicate
+
+      - name: Push to nuget.org
+        if: ${{ github.event.inputs.enable_nuget_org_push == 'true' && github.event_name != 'pull_request' }}
+        env:
+          NUGET_KEY: ${{ secrets.NUGET_ORG_KEY }}
+        run: dotnet nuget push .\out\package\release\*.nupkg -k $env:NUGET_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Upload NuGet Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: out_nupkgs
+          path: ./out/package/release/*.nupkg
+          if-no-files-found: error
+          retention-days: 5
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [ pack_app, build_nupkg, build_android ]
+    if: ${{ always() && needs.pack_app.result == 'success' && needs.build_nupkg.result == 'success' && (needs.build_android.result == 'success' || needs.build_android.result == 'skipped') && github.event_name != 'pull_request' && (startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag) }}
+    permissions:
+      contents: write
+    concurrency:
+      group: "publish-public"
+    steps:
+      - name: Validate Release Tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            if [[ ! "${{ github.ref }}" =~ ^refs/tags/v ]]; then
+              echo "::error::Push event is not a valid release tag (must start with v)."
+              exit 1
+            fi
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && -z "${{ github.event.inputs.release_tag }}" ]]; then
+            echo "::error::Release tag is required for manual dispatch."
+            exit 1
+          fi
+
+          if [[ -z "${{ env.RELEASE_TAG }}" ]]; then
+            echo "::error::RELEASE_TAG is empty."
+            exit 1
+          fi
+
+          echo "Release tag: ${{ env.RELEASE_TAG }}"
+          echo "Source ref: ${{ env.SOURCE_REF }}"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          ref: ${{ env.SOURCE_REF }}
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./out_artifacts
+
+      # Internal artifact names stay upstream-compatible (out_*), so the existing
+      # combine/pack scripts continue to work. Only public release files are renamed.
+      - name: Prepare CIIEC Release Assets
+        shell: bash
+        env:
+          ANDROID_ENABLED: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.enable_android_build != 'false' }}
+        run: |
+          set -euo pipefail
+          rm -rf ./release_assets
+          mkdir -p ./release_assets
+
+          copy_one() {
+            local artifact_dir="$1"
+            local extension="$2"
+            local target_name="$3"
+            local root="./out_artifacts/$artifact_dir"
+
+            if [[ ! -d "$root" ]]; then
+              echo "::error::Artifact directory '$artifact_dir' does not exist."
+              exit 1
+            fi
+
+            mapfile -t matches < <(find "$root" -maxdepth 2 -type f -name "*.$extension" -print)
+            if [[ "${#matches[@]}" -ne 1 ]]; then
+              echo "::error::Expected exactly one *.$extension in '$artifact_dir', found ${#matches[@]}."
+              printf '%s\n' "${matches[@]:-}"
+              exit 1
+            fi
+
+            cp "${matches[0]}" "./release_assets/$target_name"
+          }
+
+          # Windows public folder packages: 6
+          copy_one "out_app_windows_x64_full_folder"          "zip" "CIIEC_app_${LANGUAGE_TAG}_windows_x64_full_folder.zip"
+          copy_one "out_app_windows_x64_selfContained_folder" "zip" "CIIEC_app_${LANGUAGE_TAG}_windows_x64_selfContained_folder.zip"
+          copy_one "out_app_windows_x86_full_folder"          "zip" "CIIEC_app_${LANGUAGE_TAG}_windows_x86_full_folder.zip"
+          copy_one "out_app_windows_x86_selfContained_folder" "zip" "CIIEC_app_${LANGUAGE_TAG}_windows_x86_selfContained_folder.zip"
+          copy_one "out_app_windows_arm64_full_folder"        "zip" "CIIEC_app_${LANGUAGE_TAG}_windows_arm64_full_folder.zip"
+          copy_one "out_app_windows_arm64_selfContained_folder" "zip" "CIIEC_app_${LANGUAGE_TAG}_windows_arm64_selfContained_folder.zip"
+
+          # Linux: 2 folder + 2 deb = 4
+          copy_one "out_app_linux_x64_selfContained_folder"   "zip" "CIIEC_app_${LANGUAGE_TAG}_linux_x64_selfContained_folder.zip"
+          copy_one "out_app_linux_arm64_selfContained_folder" "zip" "CIIEC_app_${LANGUAGE_TAG}_linux_arm64_selfContained_folder.zip"
+          copy_one "out_app_linux_x64_selfContained_deb"      "deb" "CIIEC_app_${LANGUAGE_TAG}_linux_x64_selfContained_deb.deb"
+          copy_one "out_app_linux_arm64_selfContained_deb"    "deb" "CIIEC_app_${LANGUAGE_TAG}_linux_arm64_selfContained_deb.deb"
+
+          # macOS: 2 pkg
+          copy_one "out_app_macos_x64_selfContained_pkg"      "pkg" "CIIEC_app_${LANGUAGE_TAG}_macos_x64_selfContained_pkg.pkg"
+          copy_one "out_app_macos_arm64_selfContained_pkg"    "pkg" "CIIEC_app_${LANGUAGE_TAG}_macos_arm64_selfContained_pkg.pkg"
+
+          expected_count=12
+
+          # Android: 2 APKs when enabled.
+          if [[ "$ANDROID_ENABLED" == "true" ]]; then
+            copy_one "out_app_android_arm64_monoaot_apk" "apk" "CIIEC_app_${LANGUAGE_TAG}_android_arm64_monoaot_apk.apk"
+            copy_one "out_app_android_x64_monoaot_apk"   "apk" "CIIEC_app_${LANGUAGE_TAG}_android_x64_monoaot_apk.apk"
+            expected_count=14
+          fi
+
+          actual_count="$(find ./release_assets -maxdepth 1 -type f | wc -l | tr -d ' ')"
+          if [[ "$actual_count" -ne "$expected_count" ]]; then
+            echo "::error::Expected $expected_count release app files, got $actual_count."
+            exit 1
+          fi
+
+          echo "Prepared $actual_count CIIEC release assets:"
+          find ./release_assets -maxdepth 1 -type f -printf '%f\n' | sort
+
+      - name: Create GitHub Release Draft
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "./release_assets/*"
+          artifactErrorsFailBuild: true
+          draft: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ env.RELEASE_TAG }}
+          # If RELEASE_TAG does not exist yet, create it at the exact source ref
+          # used for this build. Existing tags are never moved by this action.
+          commit: ${{ env.SOURCE_REF }}
+          name: "CIIEC ${{ env.RELEASE_TAG }}"
+          body: "Auto-generated release for ${{ env.RELEASE_TAG }}"
+          allowUpdates: true

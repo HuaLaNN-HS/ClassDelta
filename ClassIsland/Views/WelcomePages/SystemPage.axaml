@@ -17,10 +17,10 @@
                 Classes="settings-container animated-intro"
                 DataContext="{Binding RelativeSource={RelativeSource AncestorType=welcomePages:SystemPage}}"
                 MaxWidth="600">
-        <TextBlock Text="系统" HorizontalAlignment="Center"
+        <TextBlock Text="System" HorizontalAlignment="Center"
                    Margin="0 0 0 4"
                    Theme="{StaticResource SubtitleTextBlockStyle}"/>
-        <TextBlock Text="设置ClassIsland的系统集成功能，这些功能可以优化您使用本软件的体验。" HorizontalAlignment="Center"
+        <TextBlock Text="Set up System-Integrated features for CIIEC, which can improve your experience of using this software." HorizontalAlignment="Center"
                    Margin="0 0 0 8"/>
         
         <CheckBox IsChecked="{Binding ViewModel.CreateStartupShortcut}">
@@ -29,8 +29,8 @@
                     <On Options="macOS" Content="False"/>
                 </OnPlatform>
             </CheckBox.IsVisible>
-            <ci:Thing IconSource="{ci:FluentIconSource &#xE342;}" Header="开机自启"
-                      Description="在系统启动时自动运行本应用。" />
+            <ci:Thing IconSource="{ci:FluentIconSource &#xE342;}" Header="Start on boot"
+                      Description="Run this software on boot of your system." />
         </CheckBox>
         <!--<CheckBox>
             <controls:SettingsControl HasSwitcher="False"
@@ -43,8 +43,8 @@
                     <On Options="macOS" Content="False"/>
                 </OnPlatform>
             </CheckBox.IsVisible>
-            <ci:Thing IconSource="{ci:FluentIconSource &#xE62F;}" Header="创建桌面快捷方式"
-                      Description="在桌面上添加软件快捷方式。" />
+            <ci:Thing IconSource="{ci:FluentIconSource &#xE62F;}" Header="Create shortcut on desktop"
+                      Description="Create a shortcut on your desktop." />
         </CheckBox>
         <CheckBox IsChecked="{Binding ViewModel.CreateStartMenuShortcut}">
             <CheckBox.IsVisible>
@@ -56,8 +56,8 @@
                 </MultiBinding>
             </CheckBox.IsVisible>
             <ci:Thing IconSource="{ci:FluentIconSource &#xE064;}"
-                      Header="创建开始菜单快捷方式"
-                      Description="在开始菜单上添加软件快捷方式。" />
+                      Header="Create a shortcut on the start menu"
+                      Description="Creates a shortcut for this software on your start menu." />
         </CheckBox>
         <CheckBox IsChecked="{Binding ViewModel.RegisterUrlScheme}">
             <CheckBox.IsVisible>
@@ -66,8 +66,8 @@
                 </OnPlatform>
             </CheckBox.IsVisible>
             <ci:Thing IconSource="{ci:FluentIconSource &#xEAB0;}"
-                      Header="注册 Url 协议"
-                      Description="允许第三方应用或网页通过 Url 协议 classisland:// 调用本应用的部分功能，详见帮助文档。" />
+                      Header="Register a URL protocol (Highly Recommended)"
+                      Description="Allows third party software or webpages to use some features of this software through URL protocol classisland://, you can learn more at our docs." />
         </CheckBox>
         <CheckBox Margin="22 0 0 0"
                   IsChecked="{Binding ViewModel.CreateClassSwapShortcut}"
@@ -78,13 +78,13 @@
                 </OnPlatform>
             </CheckBox.IsVisible>
             <ci:Thing IconSource="{ci:FluentIconSource &#xE15F;}"
-                      Header="在桌面创建换课快捷方式"
-                      Description="打开此快捷方式可以一键开始换课。" />
+                      Header="Create a shortcut for swap lessons on your desktop"
+                      Description="Run the shortcut to swap lessons in one click." />
         </CheckBox>
         
         <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
             <Button Command="{x:Static views:WelcomeWindow.WelcomeNavigateBackCommand}"
-                    ToolTip.Tip="上一步"
+                    ToolTip.Tip="Previous"
                     Content="{ci:FluentIcon &#xE108;, FontSize=18}"
                     Width="48" Height="48"
                     CornerRadius="24"
