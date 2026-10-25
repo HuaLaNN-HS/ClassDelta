@@ -5,6 +5,7 @@
              xmlns:controls="clr-namespace:FluentAvalonia.UI.Controls;assembly=FluentAvalonia"
              xmlns:controls1="clr-namespace:ClassIsland.Controls"
              xmlns:views="clr-namespace:ClassIsland.Views"
+			 xmlns:loc="clr-namespace:ClassIsland.Services"
              xmlns:ci="http://classisland.tech/schemas/xaml/core"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="ClassIsland.Views.WelcomePages.WelcomePage">
@@ -44,29 +45,55 @@
                         </Style>
                     </Style>
                 </StackPanel.Styles>
-                <TextBlock Text="C" />
+                <TextBlock Text="H" />
+                <TextBlock Text="e" />
                 <TextBlock Text="l" />
-                <TextBlock Text="a" />
-                <TextBlock Text="s" />
-                <TextBlock Text="s" />
-                <TextBlock Text="I" />
-                <TextBlock Text="s" />
                 <TextBlock Text="l" />
-                <TextBlock Text="a" />
-                <TextBlock Text="n" />
+                <TextBlock Text="o" />
+                <TextBlock Text=" " />
+                <TextBlock Text="W" />
+                <TextBlock Text="o" />
+                <TextBlock Text="r" />
+                <TextBlock Text="l" />
                 <TextBlock Text="d" />
             </StackPanel>
 
-            <StackPanel Grid.Row="2" Spacing="4" VerticalAlignment="Top" HorizontalAlignment="Center">
-                <Button HorizontalAlignment="Center"
-                        Content="{ci:FluentIcon &#xE130;, FontSize=18}"
-                        Width="48" Height="48"
-                        CornerRadius="24"
-                        Classes="accent"
-                        ToolTip.Tip="下一步" IsEnabled="True"
-                        Click="ButtonNext_OnClick"
-                        Margin="0 8 0 0" />
-            </StackPanel>
+			<StackPanel Grid.Row="2"
+            Spacing="10"
+            VerticalAlignment="Top"
+            HorizontalAlignment="Center">
+				<TextBlock
+					Text="Please choose your language&#10;请选择语言"
+					TextAlignment="Center"
+					HorizontalAlignment="Center"
+					TextWrapping="Wrap"
+					Margin="0,8,0,0"/>
+				<ComboBox
+					x:Name="LanguageSelector"
+					Width="240"
+					HorizontalAlignment="Center"
+					ItemsSource="{x:Static loc:UiLocalizationService.SupportedLanguages}"
+					SelectedValue="{Binding ViewModel.SettingsService.Settings.UiLanguage, Mode=TwoWay}"
+					SelectedValueBinding="{Binding Code}">
+
+					<ComboBox.ItemTemplate>
+						<DataTemplate>
+							<TextBlock Text="{Binding DisplayName}"/>
+						</DataTemplate>
+					</ComboBox.ItemTemplate>
+				</ComboBox>
+				<Button
+					HorizontalAlignment="Center"
+					Content="{ci:FluentIcon &#xE130;, FontSize=18}"
+					Width="48"
+					Height="48"
+					CornerRadius="24"
+					Classes="accent"
+					ToolTip.Tip="Next/下一步"
+					IsEnabled="True"
+					Click="ButtonNext_OnClick"
+					Margin="0,4,0,0"/>
+			</StackPanel>
             
             <StackPanel Grid.Row="2"
                         VerticalAlignment="Bottom" HorizontalAlignment="Center"

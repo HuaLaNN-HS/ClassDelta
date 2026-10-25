@@ -15,8 +15,18 @@ namespace ClassIsland.Views.WelcomePages;
 
 public partial class WelcomePage : UserControl, IWelcomePage
 {
-    public WelcomeViewModel ViewModel { get; set; } = null!;
-    
+    private WelcomeViewModel _viewModel = null!;
+
+    public WelcomeViewModel ViewModel
+    {
+        get => _viewModel;
+        set
+        {
+            _viewModel = value;
+            DataContext = this;
+        }
+    }
+
     public WelcomePage()
     {
         InitializeComponent();

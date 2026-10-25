@@ -559,9 +559,9 @@ public partial class App : AppBase, IAppHost
         ConsoleService.InitializeConsole();
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         
-        
-        Thread.CurrentThread.CurrentUICulture = new CultureInfo("zh-CN");
-        Thread.CurrentThread.CurrentCulture = new CultureInfo("zh-CN");
+        //不强行限制语言为中文
+        Thread.CurrentThread.CurrentUICulture = new CultureInfo("en-US");
+        //Thread.CurrentThread.CurrentCulture = new CultureInfo("zh-CN");
 
         // 检测 Mutex
         if (!IsMutexCreateNew && !Design.IsDesignMode)
@@ -775,6 +775,15 @@ public partial class App : AppBase, IAppHost
         var spanLoadingSettings = spanLaunching.StartChild("startup-loading-settings");
         await GetService<SettingsService>().LoadSettingsAsync();
         Settings = GetService<SettingsService>().Settings;
+        ApplyUiLanguage(Settings.UiLanguage);
+
+        Settings.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ClassIsland.Models.Settings.UiLanguage))
+            {
+                ApplyUiLanguage(Settings.UiLanguage);
+            }
+        };
         Settings.IsSystemSpeechSystemExist = isSystemSpeechSystemExist;
         Settings.DiagnosticStartupCount++;
 
@@ -1006,6 +1015,22 @@ public partial class App : AppBase, IAppHost
         }
     }
 
+    private void ApplyUiLanguage(string? language)
+    {
+        var cultureName = language switch
+        {
+            "en-US" => "en-US",
+            "zh-CN" => "zh-CN",
+            _ => "en-US"
+        };
+
+        var culture = CultureInfo.GetCultureInfo(cultureName);
+
+        CultureInfo.DefaultThreadCurrentUICulture = culture;
+        Thread.CurrentThread.CurrentUICulture = culture;
+
+        UiLocalizationService.Instance.SetLanguage(cultureName);
+    }
     private void PostStartup(ISpan spanLoadMainWindow, ITransactionTracer transaction, string startupCountFilePath)
     {
         GetService<ISplashService>().CurrentProgress = 98;

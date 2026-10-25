@@ -8,7 +8,7 @@
         <ApplicationId>cn.classisland.app</ApplicationId>
         <Company>ClassIsland</Company>
         <Product>ClassIsland</Product>
-        <SatelliteResourceLanguages>en;zh-cn</SatelliteResourceLanguages>
+        <SatelliteResourceLanguages>en;en-US;zh-cn</SatelliteResourceLanguages>
         <Title>ClassIsland</Title>
         <AssemblyTitle>ClassIsland</AssemblyTitle>
     </PropertyGroup>

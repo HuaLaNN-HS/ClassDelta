@@ -12,6 +12,7 @@
       xmlns:views="clr-namespace:ClassIsland.Views"
       xmlns:converters="clr-namespace:ClassIsland.Core.Converters;assembly=ClassIsland.Core"
       xmlns:commands="clr-namespace:ClassIsland.Core.Commands;assembly=ClassIsland.Core"
+	  xmlns:loc="clr-namespace:ClassIsland.Services"
       xmlns:ci="http://classisland.tech/schemas/xaml/core"
       xmlns:controls3="clr-namespace:FluentAvalonia.UI.Controls;assembly=FluentAvalonia"
       xmlns:abstraction="clr-namespace:ClassIsland.Platforms.Abstraction;assembly=ClassIsland.Platforms.Abstractions"
@@ -49,6 +50,29 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+			<!-- 界面语言 -->
+			<controls3:FASettingsExpander
+				IconSource="{ci:FluentIconSource &#xE774;}"
+				Header="界面语言"
+				Description="选择应用界面显示的语言。切换后将立即应用于支持语言切换的界面。">
+
+				<controls3:FASettingsExpander.Footer>
+					<ComboBox
+						MinWidth="160"
+						HorizontalContentAlignment="Left"
+						ItemsSource="{x:Static loc:UiLocalizationService.SupportedLanguages}"
+						SelectedValue="{Binding ViewModel.SettingsService.Settings.UiLanguage, Mode=TwoWay}"
+						SelectedValueBinding="{Binding Code}">
+
+						<ComboBox.ItemTemplate>
+							<DataTemplate>
+								<TextBlock Text="{Binding DisplayName}"/>
+							</DataTemplate>
+						</ComboBox.ItemTemplate>
+					</ComboBox>
+				</controls3:FASettingsExpander.Footer>
+			</controls3:FASettingsExpander>
 
             <controls1:IconText Glyph="&#xE84F;" Text="行为" Margin="0 0 0 4" />
             <!-- 开机自启 -->

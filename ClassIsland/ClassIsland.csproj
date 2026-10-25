@@ -124,6 +124,11 @@
     <ItemGroup Condition="'$(ClassIslandBundleAssetsInAssembly)' == 'true'">
         <AvaloniaResource Include="Assets\**" />
     </ItemGroup>
+<!--排除resx文件-->
+	<ItemGroup>
+		<AvaloniaResource Remove="Assets\Localization\Localization.Main.Strings.resx" />
+		<AvaloniaResource Remove="Assets\Localization\Localization.Main.Strings.en-US.resx" />
+	</ItemGroup>
     <ItemGroup Condition="'$(ClassIslandBundleAssetsInAssembly)' != 'true'">
         <None Update="Assets\**">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -167,6 +172,11 @@
 	<ItemGroup>
 	  <Compile Remove="Assets\Localization\SettingsPage\General\Localization.SettingsPage.General.Designer.cs" />
 	  <Compile Remove="Assets\Localization\TrayMenu\Localization.TrayMenu.Designer.cs" />
+	  <Compile Update="Assets\Localization\Localization.Main.Strings.Designer.cs">
+	    <DesignTime>True</DesignTime>
+	    <AutoGen>True</AutoGen>
+	    <DependentUpon>Localization.Main.Strings.resx</DependentUpon>
+	  </Compile>
 	  <Compile Update="Views\SettingPages\UpdateSettingsPage.axaml.cs">
 	    <DependentUpon>UpdateSettingsPage.axaml</DependentUpon>
 	    <SubType>Code</SubType>
@@ -222,6 +232,12 @@
 	  <AvaloniaXaml Update="Assets\Fonts\Fonts.axaml">
 	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 	  </AvaloniaXaml>
+	</ItemGroup>
+	<ItemGroup>
+	  <EmbeddedResource Update="Assets\Localization\Localization.Main.Strings.resx">
+	    <Generator>ResXFileCodeGenerator</Generator>
+	    <LastGenOutput>Localization.Main.Strings.Designer.cs</LastGenOutput>
+	  </EmbeddedResource>
 	</ItemGroup>
 
     <Target Name="PrintConstants" AfterTargets="Build">

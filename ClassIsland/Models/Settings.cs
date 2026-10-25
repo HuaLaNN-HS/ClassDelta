@@ -69,6 +69,7 @@ public class Settings : ObservableRecipient, ILessonControlSettings, INotificati
     private string _selectedProfile = "Default.json";
     private bool _isMainWindowVisible = true;
     private bool _isWelcomeWindowShowed = false;
+    private string _uiLanguage = "en-US";
     private bool _isReportingEnabled = true;
     private Dictionary<string, string> _releaseChannels = new()
     {
@@ -259,6 +260,17 @@ public class Settings : ObservableRecipient, ILessonControlSettings, INotificati
         {
             if (value == _isWelcomeWindowShowed) return;
             _isWelcomeWindowShowed = value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string UiLanguage
+    {
+        get => _uiLanguage;
+        set
+        {
+            if (value == _uiLanguage) return;
+            _uiLanguage = value;
             OnPropertyChanged();
         }
     }
