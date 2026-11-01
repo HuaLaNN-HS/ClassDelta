@@ -5,12 +5,12 @@
         <Nullable>enable</Nullable>
         <OutputType>Exe</OutputType>
         <BaseFramework>net10.0</BaseFramework>
-        <ApplicationId>cn.classisland.app</ApplicationId>
-        <Company>ClassIsland</Company>
-        <Product>ClassIsland</Product>
+        <ApplicationId>cn.classdelta.app</ApplicationId>
+        <Company>ClassDelta</Company>
+        <Product>ClassDelta</Product>
         <SatelliteResourceLanguages>en;en-US;zh-cn</SatelliteResourceLanguages>
-        <Title>ClassIsland</Title>
-        <AssemblyTitle>ClassIsland</AssemblyTitle>
+        <Title>ClassDelta</Title>
+        <AssemblyTitle>ClassDelta</AssemblyTitle>
     </PropertyGroup>
     <PropertyGroup Condition="'$(PublishBuilding)'=='true' And '$(PublishPlatform)'=='macos'">
         <!-- Preserve PublishFolderType from referenced projects for macOS app bundle resources. -->
@@ -22,13 +22,13 @@
     
     <!-- UOS DEB Packaging Properties -->
     <PropertyGroup>
-        <AppId>cn.classisland.app</AppId>
-        <AppName>ClassIsland</AppName>
+        <AppId>cn.classdelta.app</AppId>
+        <AppName>ClassDelta</AppName>
         <DebControlDescription>功能强大、可定制、跨平台的大屏课表显示工具。</DebControlDescription>
         <DesktopComment>功能强大、可定制、跨平台的大屏课表显示工具。</DesktopComment>
-        <DebControlHomepage>https://classisland.tech</DebControlHomepage>
+        <DebControlHomepage>https://github.com/HuaLaNN-HS/ClassDelta</DebControlHomepage>
         <DebControlSection>utils</DebControlSection>
-        <DebControlMaintainer>ClassIsland</DebControlMaintainer>
+        <DebControlMaintainer>ClassDelta</DebControlMaintainer>
         <Png32x32IconFile>Assets\AppLogo@32w.png</Png32x32IconFile>
         <SvgIconFile>Assets\AppLogo.svg</SvgIconFile>
 <!--        <DesktopMimeType>x-scheme-handler/classisland</DesktopMimeType>-->

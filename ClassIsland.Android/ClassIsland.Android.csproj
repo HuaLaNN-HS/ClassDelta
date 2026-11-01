@@ -18,18 +18,18 @@
     <EmbedAssembliesIntoApk Condition="'$(Configuration)' == 'Debug' and '$(UseMonoRuntime)' == 'false'">true</EmbedAssembliesIntoApk>
   </PropertyGroup>
   <PropertyGroup Condition="'$(BrandType)' == 'Production'">
-    <ApplicationId>cn.classisland.android</ApplicationId>
-    <ApplicationTitle>ClassIsland</ApplicationTitle>
+    <ApplicationId>cn.classdelta.android</ApplicationId>
+    <ApplicationTitle>ClassDelta</ApplicationTitle>
     <DefineConstants>$(DefineConstants);Brand_Production</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(BrandType)' == 'Beta'">
-    <ApplicationId>cn.classisland.android.beta</ApplicationId>
-    <ApplicationTitle>ClassIsland (Beta)</ApplicationTitle>
+    <ApplicationId>cn.classdelta.android.beta</ApplicationId>
+    <ApplicationTitle>ClassDelta (Beta)</ApplicationTitle>
     <DefineConstants>$(DefineConstants);Brand_Beta</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(BrandType)' == 'Dev'">
-    <ApplicationId>cn.classisland.android.dev</ApplicationId>
-    <ApplicationTitle>ClassIsland (Dev)</ApplicationTitle>
+    <ApplicationId>cn.classdelta.android.dev</ApplicationId>
+    <ApplicationTitle>ClassDelta (Dev)</ApplicationTitle>
     <DefineConstants>$(DefineConstants);Brand_Dev</DefineConstants>
   </PropertyGroup>
   <PropertyGroup>

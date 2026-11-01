@@ -158,8 +158,8 @@
     <PropertyGroup Condition="'$(ClassIsland_SelfContained)'=='true'">
         <DefineConstants>$(DefineConstants);SelfContained</DefineConstants>
     </PropertyGroup>
-    <PropertyGroup Condition="'$(ClassIsland_MonoAoT)'=='true'">
-        <DefineConstants>$(DefineConstants);MonoAoT</DefineConstants>
+    <PropertyGroup Condition="'$(ClassIsland_CoreCLR)'=='true'">
+        <DefineConstants>$(DefineConstants);CoreCLR</DefineConstants>
     </PropertyGroup>
     <PropertyGroup Condition="'$(ClassIsland_AoT)'=='true'">
         <DefineConstants>$(DefineConstants);AoT</DefineConstants>

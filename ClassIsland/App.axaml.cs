@@ -83,8 +83,8 @@ public partial class App : AppBase, IAppHost
         "selfContained";
 #elif AoT
         "aot";
-#elif MonoAoT
-        "monoaot";
+#elif CoreCLR
+        "coreclr";
 #else
         "full";
 #endif

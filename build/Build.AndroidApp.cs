@@ -57,7 +57,7 @@ public partial class Build
                 .SetProperty("PublishPlatform", OsName)
                 .SetProperty("RuntimeIdentifier", RuntimeIdentifier)
                 .SetProperty("ClassIsland_PlatformTarget", Arch)
-                .SetProperty("ClassIsland_MonoAoT", true)
+                .SetProperty("ClassIsland_CoreCLR", true)
                 .SetProperty("PublishDir", AppPublishPath)
                 .SetProperty("BrandType", IsProductionBuild ? "Production" : "Beta")
                 .SetProperty("ApplicationVersion", Math.Max(GitCommitCount, 1))
