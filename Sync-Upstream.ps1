@@ -149,6 +149,7 @@ function Fetch-UpstreamBranch {
     Write-Host 'Fetching the official branch using temporary upstream configuration...'
     Write-Host "  URL:    $($script:UpstreamUrl)"
     Write-Host "  Branch: $($script:UpstreamBranch)"
+    Write-Host " Last commit ending at Oct 22 2026, please check upon new commits! "
 
     # The upstream URL and fetch refspec exist only for this Git command.
     # This does not add or overwrite a permanent "upstream" remote in .git/config.
