@@ -1,0 +1,92 @@
+name: Bug Report
+description: You've encountered bugs while using ClassDelta. This is the English (US) version of the issue template.
+title: (Replace this box with your title)
+labels: ["Bug", "Not Viewed", "Priority--Empty"]
+type: Bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for sending feedback on a bug! To make it easier for developers to solve your problem, please type in a title that can describe your situation as clearly as possible in the text box above⬆.
+        Oringinal Issue Template created by ClassIsland Official
+        
+        > [!important]
+        > Important: If you need to provide feedback on **MULTIPLE Bugs**, please open an individual issue for each!
+        >
+        > If you don't know how to effectively and accurately express your problems, we suggest you read "How To Ask Questions The Smart Way" ([Link](https://http://www.catb.org/~esr/faqs/smart-questions.html))。
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      description: Before providing feedback, please check if:
+      options:
+        - label: I've already updated to the newest version ![Newest Version](https://img.shields.io/github/v/release/HuaLaNN-HS/ClassDelta?include_prereleases&style=flat-square&label=) or ![Newest Version](https://img.shields.io/github/v/release/HuaLaNN-HS/ClassDelta?style=flat-square&label=) for testing, and already confirmed that this bug still exists even in the [Latest Commits](https://github.com/HuaLaNN-HS/ClassDelta/commits/dev/). I've also searched in the [Issues](https://github.com/HuaLaNN-HS/ClassDelta/issues?q=label%3ABug), and is sure that this bug has never been reported, and no valid soulution can be found in the [FAQs](https://docs.classisland.tech/app/faq/faq.html).
+          required: true
+        - label: I've carefully read the contents of these options, and am aware that this option doesn't need to be ticked.
+        - label: I am aware and agree that this area is solely for reporting issues within the program (issues unrelated to the program itself should be raised in the Discussion section or discord server).
+          required: true
+  - type: markdown
+    attributes:
+      value: |
+        ### Bug Info
+
+        Describe the bug you've encountered. You can attatch materials like screenshots, screen recordings, stack traces, and logs to make solving your problem easier. **Please read the docs [here](https://docs.classisland.tech/) to learn how to collect related materials.**
+
+        > [!note]
+        > When uploading an attatchment,** it's more recommended to use the original GitHub attatchment system to do this**. You may drag or paste the file on the editing area. If you need to upload multiple files, please package all files into a .zip or .tar.gz file. **AVOID using cloud drives to upload files, especially ones that need logging in or installing a client. (Such as Dropbox / Google Drive and etc)**
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Function/Feature
+      description: Precisely describe the behavior you expect in detail. Stress out the difference between the current function (which could be wrong) and the expected.
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Actual Outcome
+      description: What actually happens.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce-steps
+    attributes:
+      label: How to reproduce
+      description: |
+        Describe how to reproduce this bug in detail. It will be better if it can be reproduced stablely.
+      placeholder: |
+        1. First...
+        2. Second...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots/Screen recordings (Recommended, however not necessary)
+      description: |
+        If possible, please provide screenshots or screen recordings to tell us your problem.
+  - type: textarea
+    id: stacktrace
+    attributes:
+      label: Stack Trace (Recommended)
+      description: If a crash happened during this bug (showing a crash notification), or the logs recorded the error, please paste the stack trace info here.
+      render: shell
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostic Info
+      description: |
+        View diagnostic info in App Settings -> About -> View Diagnostic Info. Please paste the info entirely here, DO NOT MODIFY ANY CONTENT!
+        ⚠️ You MUST fill in this box, no matter whether you belive it's necessary. We might not be able to handle your problem if you haven't filled in this info.
+      render: plaintext
+    validations:
+      required: true
+  - type: checkboxes
+    id: revision
+    attributes:
+      label: Last step
+      description: Revise your issue
+      options:
+        - label: I believe my description is detailed enough for developers to reproduce this problem. If my issue wasn't filled in under the required circumstances, it might be unconditionally closed.
+          required: true

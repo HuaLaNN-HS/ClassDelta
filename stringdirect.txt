@@ -1,0 +1,82 @@
+ClassDelta Resource Range Index
+
+Ⅰ - Log Rules/日志规则
+All changes must be logged into the index once made.
+所有修改需要在完成时写入索引
+Eg.
+Date/日期     Range/号段          Comment/注释
+[261108]        00000~99999        Initialize directory
+//Date format is in YYMMDD. Both gaps are 8 spaces in length. Do not skip zeroes! Comments should be in Chinese (zh-Hans/zh-Hant are all accepted) or English. Additional comments can be added through double slashes like this, and occupy entire rows.
+//日期格式为年月日。两个空位均长8个空格。请勿省略零！注释语言应为中文（简体繁体均可）或英文。更多注释可以像这样通过双斜杠添加，并占据一整行。
+
+Ⅱ - Main Index Rules/总索引规则
+示例/Eg.
+delta00000
+//All ranges include endpoints, .axaml s include related .cs s./所有区间包含端点，.axaml文件包含相关的.cs文件。
+//Range Code Rules/号段码规则:
+0000X00
+X=Rank Letter/级别字母, A=Root Category/根分类, B=Secondary Category/次级分类, C=Single Interface/单个界面; 00=Number/标号
+Eg. ROOTA02，0001B09，0212C37
+//First four digits: If this is an A category, then fill in ROOT; if this is a B category, the first 2 digits are 00, 3rd~4th digits is its A category number; if this is a C category, the first 2 digits is its A category number, 3rd~4th digits is its B category number.
+The 5th digit: This range's ABC category.
+Last 2 digits: The identification number under the current ABC category.
+Such as 0212C37 is the 37th interface under 0002B12 under ROOTA02.
+//前四位：若为A分类，则填入ROOT；B分类前2位为00，3~4位为A分类标号；C分类前2位为A分类标号，3~4位为B分类标号。
+第5位：为ABC分类。
+末两位：为该ABC分类下序号。
+比如0212C37为ROOTA02下0002B12下的37号界面。
+
+Ⅲ - Contents for Range Codes/号段码目录
+ROOT----delta00000-StringIndex
+	A01 Welcoming and Liscensing/欢迎与许可----00001~00999
+		B01 Welcome Pages/欢迎页----0101C00----00001~00269
+			C01-00001~00029 WelcomePage.axaml
+			C02-00030~00059 LicensePage.axaml
+			C03-00060~00089 GeneralPage.axaml
+			C04-00090~00119 ColorThemePage.axaml
+			C05-00120~00149 AppearancePage.axaml
+			C06-00150~00179 SystemPage.axaml
+			C07-00180~00209 RefreshingPage.axaml
+			C08-00210~00239 FinishPage.axaml
+			C09-00240~00269 IWelcomePage.cs
+		B02 About/关于----0102C00----00270~00469
+			C01-00270~00369 AboutSettingsPage.axaml
+			C02-00370~00469 AboutDeltaPage.axaml
+		B03 Buffer Zone Codes/缓冲区号段----0103C00----00470~00999
+	A02 Main Settings/主设置----01000~02999
+		B01 General/通用----0201C00----01000~01399
+			C01-01000~01499 GeneralSettingsPage.axaml
+			C02-01150~01199 ClockSettingsPage.axaml
+			C03-01200~01249 StorageSettingsPage.axaml
+			C04-01250~01259 PrivacySettingsPage.axaml
+			C05-01260~01299 RefreshingSettingsPage.axaml
+			C06-01300~01329 AdvancedSettingsPage.axaml
+		B02 Main Interface/主界面----0202C00----01330~01509
+			C01-01330~01389 ComponentsSettingsPage.axaml
+			C02-01390~01419 ComponentsSettingsPageDropHandler
+			C03-01420~01469 AppearanceSettingsPage.axaml
+			C04-01470~01509 WindowSettingsPage.axaml
+		B03 Notifications/提醒----0203C00----01510~01579
+			C01-01510~01549 NotificationSettingsPage.axaml
+			C02-01550~01579 RealtimeNotificationSettingsPage.axaml
+		B04 Other Settings/其他设置----0204C00----01580~02199
+			C01-01580~01609 WeatherSettingsPage.axaml
+			C02-01610~01629 AutomationSettingsPage.axaml
+			C03-01630~01649 UpdateSettingsPage.axaml
+			C04-01650~01669 PluginsSettingsPage.axaml
+			C05-01670~01689 ThemesSettingsPage.axaml
+		B05 Official Management/官方集控----0205C00----01690~01779
+			C01-01690~01719 ManagementSettingsPage.axaml
+			C02-01720~01749 ManagementCredentialsSettingsPage.axaml
+			C03-01750~01779 ManagementPolicySettingsPage.axaml
+		B06 Debug and Error/调试与错误----0206C00----01780~01880
+			C01-01780~01799 TestSettingPage.axaml
+			C02-01800~01819 ErrorSettingsPage.axaml
+			C03-01820~01849 DebugPage.axaml
+			C04-01850~01879 DebugBrushesSettingsPage.xaml
+			C11-01880~01909 HomePage.axaml
+			C12-01910~01939 RecoveryBackupPage.axaml
+		B07 Buffer Zone Codes/缓冲区号段----0207C00----01940~02299
+	A03 Profile Related/档案相关----02300~02999
+		B01
+			
