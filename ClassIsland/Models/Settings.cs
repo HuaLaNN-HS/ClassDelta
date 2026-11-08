@@ -1574,6 +1574,17 @@ public partial class Settings : ObservableRecipient, ILessonControlSettings, INo
         }
     }
 
+    public string NotificationEffectId
+    {
+        get;
+        set
+        {
+            if (value == field) return;
+            field = value;
+            OnPropertyChanged();
+        }
+    } = "classisland.ripple";
+
     public double NotificationEffectRenderingScale
     {
         get => _notificationEffectRenderingScale;
