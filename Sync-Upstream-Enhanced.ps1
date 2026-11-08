@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 
 # Repository and upstream settings. These are deliberately fixed for this project.
 $TargetBranch = 'dev/misha-preview'
@@ -415,6 +415,8 @@ function Start-NewSync {
         Commits = @($commits)
         LedgerBeforeSync = @($appliedLedger)
         AppliedUpstreamCommits = @($appliedLedger)
+        SkippedUpstreamCommits = @()
+        ExternalCommits = @()
         NextIndex = 0
         CurrentIndex = $null
         CurrentCommit = $null
@@ -449,6 +451,93 @@ function Preview-Sync {
     Write-Host 'Preview only: no cherry-pick was performed and no push was made.'
 }
 
+function Complete-SkippedCommit {
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [switch]$CherryPickAlreadySkipped
+    )
+
+    if ([string]::IsNullOrWhiteSpace([string]$State.CurrentCommit) -or $null -eq $State.CurrentIndex) {
+        throw 'There is no current upstream commit recorded to skip.'
+    }
+
+    $currentHead = Get-CurrentHead
+    $cherryPickHeadPath = Resolve-GitPath 'CHERRY_PICK_HEAD'
+    if (Test-Path -LiteralPath $cherryPickHeadPath -PathType Leaf) {
+        throw 'A cherry-pick is still active. Abort or resolve it before recording a skip.'
+    }
+
+    $unmerged = @(Get-GitOutput @('diff', '--name-only', '--diff-filter=U'))
+    if ($unmerged.Count -gt 0) {
+        throw 'Unmerged files remain. Resolve or abort the cherry-pick before skipping.'
+    }
+
+    $dirty = @(Get-DirtyEntries)
+    if ($dirty.Count -gt 0) {
+        throw 'Working tree is not clean. Commit or stash unrelated changes before recording the skipped commit.'
+    }
+
+    if ($currentHead -ne [string]$State.LastAppliedHead) {
+        # An external/manual commit may have been created after git cherry-pick --skip.
+        # Preserve it, but never silently assume it represents the upstream commit.
+        $ancestorCheck = Get-GitExitCode @('merge-base', '--is-ancestor', [string]$State.LastAppliedHead, $currentHead)
+        if ($ancestorCheck -ne 0) {
+            throw 'HEAD is not a descendant of LastAppliedHead. The script cannot safely reconcile this history.'
+        }
+
+        $countText = @(Get-GitOutput @('rev-list', '--count', "$($State.LastAppliedHead)..$currentHead"))
+        $externalCount = [int]$countText[0]
+        if ($externalCount -lt 1) {
+            throw 'Unexpected HEAD mismatch; no descendant commits were found.'
+        }
+
+        Write-Host ''
+        Write-Host "Detected $externalCount local commit(s) after the last recorded sync point." -ForegroundColor Yellow
+        Write-Host 'These commits will be preserved and recorded as local commits, not as upstream-applied commits.'
+        & git --no-pager log --oneline --decorate "$($State.LastAppliedHead)..$currentHead"
+        $confirmExternal = Read-Host 'Type PRESERVE to keep these local commits and record the current upstream commit as skipped'
+        if ($confirmExternal -cne 'PRESERVE') {
+            throw 'Reconciliation cancelled. Sync state was not changed.'
+        }
+
+        if (-not ($State.PSObject.Properties.Name -contains 'ExternalCommits')) {
+            $State | Add-Member -NotePropertyName ExternalCommits -NotePropertyValue @()
+        }
+        $external = @($State.ExternalCommits)
+        $newLocalCommits = @(Get-GitOutput @('rev-list', '--reverse', "$($State.LastAppliedHead)..$currentHead"))
+        foreach ($localCommit in $newLocalCommits) {
+            if ($external -notcontains [string]$localCommit) {
+                $external += [string]$localCommit
+            }
+        }
+        $State.ExternalCommits = @($external)
+    }
+
+    $skippedCommit = [string]$State.CurrentCommit
+    $ledger = @($State.AppliedUpstreamCommits)
+    if ($ledger -notcontains $skippedCommit) {
+        $State.AppliedUpstreamCommits = @($ledger + $skippedCommit)
+    }
+
+    if (-not ($State.PSObject.Properties.Name -contains 'SkippedUpstreamCommits')) {
+        $State | Add-Member -NotePropertyName SkippedUpstreamCommits -NotePropertyValue @()
+    }
+    $skipped = @($State.SkippedUpstreamCommits)
+    if ($skipped -notcontains $skippedCommit) {
+        $State.SkippedUpstreamCommits = @($skipped + $skippedCommit)
+    }
+
+    $State.LastAppliedHead = Get-CurrentHead
+    $State.NextIndex = [int]$State.CurrentIndex + 1
+    $State.CurrentIndex = $null
+    $State.CurrentCommit = $null
+    $State.Status = 'InProgress'
+    Write-SyncState $State
+
+    Write-Host "Skipped upstream commit recorded: $skippedCommit" -ForegroundColor Yellow
+    Write-Host "Next upstream index: $($State.NextIndex)"
+}
+
 function Continue-PreviousSync {
     Assert-ClassDeltaRepository
     Assert-TargetBranch
@@ -464,14 +553,20 @@ function Continue-PreviousSync {
     $currentHead = Get-CurrentHead
     $cherryPickHeadPath = Resolve-GitPath 'CHERRY_PICK_HEAD'
 
-    if (($state.Status -eq 'Conflict' -or $state.Status -eq 'InProgress') -and (Test-Path -LiteralPath $cherryPickHeadPath -PathType Leaf)) {
+    if (Test-Path -LiteralPath $cherryPickHeadPath -PathType Leaf) {
+        $activeCommit = (Get-Content -LiteralPath $cherryPickHeadPath -Raw).Trim()
+        if (-not [string]::IsNullOrWhiteSpace([string]$state.CurrentCommit) -and
+            $activeCommit -ne [string]$state.CurrentCommit) {
+            throw "CHERRY_PICK_HEAD ($activeCommit) does not match the recorded current commit ($($state.CurrentCommit))."
+        }
+
         $unmerged = @(Get-GitOutput @('diff', '--name-only', '--diff-filter=U'))
         if ($unmerged.Count -gt 0) {
             Write-Host 'Unresolved conflict files remain:' -ForegroundColor Yellow
             foreach ($path in $unmerged) {
                 Write-Host "  $([System.IO.Path]::GetFullPath((Join-Path $script:RepoRoot $path)))"
             }
-            Write-Host 'Resolve these files and stage them with git add before choosing option 3 again.'
+            Write-Host 'Resolve these files and stage them with git add, then choose option 3 again.'
             return
         }
 
@@ -490,18 +585,146 @@ function Continue-PreviousSync {
 
         $state.LastAppliedHead = Get-CurrentHead
         $ledger = @($state.AppliedUpstreamCommits)
-        if ($ledger -notcontains [string]$state.CurrentCommit) { $state.AppliedUpstreamCommits = @($ledger + [string]$state.CurrentCommit) }
+        if ($ledger -notcontains [string]$state.CurrentCommit) {
+            $state.AppliedUpstreamCommits = @($ledger + [string]$state.CurrentCommit)
+        }
         $state.NextIndex = [int]$state.CurrentIndex + 1
         $state.CurrentIndex = $null
         $state.CurrentCommit = $null
         $state.Status = 'InProgress'
         Write-SyncState $state
     }
-    elseif ($currentHead -ne $state.LastAppliedHead) {
-        throw 'HEAD differs from the last recorded sync commit. For safety, the script will not continue automatically. Review the repository state or choose undo.'
+    elseif ($currentHead -ne [string]$state.LastAppliedHead) {
+        Write-Host 'HEAD differs from the last recorded sync commit.' -ForegroundColor Yellow
+        Write-Host 'This can happen when git cherry-pick --skip was run manually and local commits were made afterward.'
+        $action = Read-Host 'Type SKIP to preserve local commits and skip the recorded upstream commit, or press Enter to stop'
+        if ($action -cne 'SKIP') {
+            Write-Host 'Stopped safely. No Git history or sync state was changed.'
+            return
+        }
+        Complete-SkippedCommit -State $state
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace([string]$state.CurrentCommit)) {
+        # Git has no active cherry-pick and HEAD is unchanged: the operator may have
+        # manually run cherry-pick --skip. Do not infer intent without confirmation.
+        $action = Read-Host 'No active cherry-pick exists. Type SKIP to record the current upstream commit as skipped, or press Enter to stop'
+        if ($action -cne 'SKIP') {
+            Write-Host 'Stopped safely. No Git history or sync state was changed.'
+            return
+        }
+        Complete-SkippedCommit -State $state
     }
 
     $null = Apply-RemainingCommits $state
+}
+
+function Skip-CurrentUpstreamCommit {
+    Assert-ClassDeltaRepository
+    Assert-TargetBranch
+    $state = Read-SyncState
+
+    if ($state.Status -ne 'Conflict' -and $state.Status -ne 'InProgress') {
+        throw "The saved sync status is '$($state.Status)'; there is no current commit to skip."
+    }
+    if ($state.Branch -ne (Get-CurrentBranch)) {
+        throw "The saved sync belongs to '$($state.Branch)'. Switch to that branch first."
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$state.CurrentCommit) -or $null -eq $state.CurrentIndex) {
+        throw 'The state file does not identify a current upstream commit.'
+    }
+
+    $cherryPickHeadPath = Resolve-GitPath 'CHERRY_PICK_HEAD'
+    if (Test-Path -LiteralPath $cherryPickHeadPath -PathType Leaf) {
+        $activeCommit = (Get-Content -LiteralPath $cherryPickHeadPath -Raw).Trim()
+        if ($activeCommit -ne [string]$state.CurrentCommit) {
+            throw "Active cherry-pick $activeCommit does not match recorded commit $($state.CurrentCommit)."
+        }
+        Write-Host "This will run: git cherry-pick --skip ($($state.CurrentCommit))"
+        $confirmation = Read-Host 'Type SKIP to confirm'
+        if ($confirmation -cne 'SKIP') {
+            Write-Host 'Cancelled.'
+            return
+        }
+        & git cherry-pick --skip
+        if ($LASTEXITCODE -ne 0) {
+            throw 'git cherry-pick --skip failed. The sync state was not advanced.'
+        }
+    }
+    else {
+        Write-Host 'No active CHERRY_PICK_HEAD exists. The current commit may already have been skipped manually.'
+        $currentHead = Get-CurrentHead
+        if ($currentHead -ne [string]$state.LastAppliedHead) {
+            Write-Host 'Local commits exist after LastAppliedHead. They will be preserved, not classified as upstream commits.'
+        }
+        $confirmation = Read-Host 'Type SKIP to record the current upstream commit as skipped'
+        if ($confirmation -cne 'SKIP') {
+            Write-Host 'Cancelled.'
+            return
+        }
+    }
+
+    Complete-SkippedCommit -State $state
+    $choice = Read-Host 'Continue applying the remaining upstream commits now? Type CONTINUE'
+    if ($choice -ceq 'CONTINUE') {
+        $null = Apply-RemainingCommits $state
+    }
+}
+
+function Abort-CurrentCherryPick {
+    Assert-ClassDeltaRepository
+    Assert-TargetBranch
+    $state = Read-SyncState
+
+    if ($state.Status -ne 'Conflict' -and $state.Status -ne 'InProgress') {
+        throw "The saved sync status is '$($state.Status)'; there is no interrupted operation to abort."
+    }
+    if ($state.Branch -ne (Get-CurrentBranch)) {
+        throw "The saved sync belongs to '$($state.Branch)'. Switch to that branch first."
+    }
+
+    $cherryPickHeadPath = Resolve-GitPath 'CHERRY_PICK_HEAD'
+    if (-not (Test-Path -LiteralPath $cherryPickHeadPath -PathType Leaf)) {
+        Write-Host 'No active cherry-pick exists. Nothing was aborted.'
+        Write-Host 'Use option 3 to reconcile a manually skipped commit, or option 4 to undo the entire sync.'
+        return
+    }
+
+    $activeCommit = (Get-Content -LiteralPath $cherryPickHeadPath -Raw).Trim()
+    if (-not [string]::IsNullOrWhiteSpace([string]$state.CurrentCommit) -and
+        $activeCommit -ne [string]$state.CurrentCommit) {
+        throw "Active cherry-pick $activeCommit does not match the recorded commit $($state.CurrentCommit)."
+    }
+
+    Write-Host 'This will abort only the active cherry-pick, not undo earlier successfully applied commits.'
+    $confirmation = Read-Host 'Type ABORT to run git cherry-pick --abort'
+    if ($confirmation -cne 'ABORT') {
+        Write-Host 'Cancelled.'
+        return
+    }
+
+    & git cherry-pick --abort
+    if ($LASTEXITCODE -ne 0) {
+        throw 'git cherry-pick --abort failed. State was not advanced.'
+    }
+
+    $currentHead = Get-CurrentHead
+    if ($currentHead -ne [string]$state.LastAppliedHead) {
+        throw 'After abort, HEAD does not match LastAppliedHead. State was not rewritten; inspect Git status.'
+    }
+
+    $dirty = @(Get-DirtyEntries)
+    if ($dirty.Count -gt 0) {
+        throw 'After abort, the working tree is not clean. State was not rewritten; inspect Git status.'
+    }
+
+    $state.Status = 'InProgress'
+    $state.CurrentIndex = $null
+    $state.CurrentCommit = $null
+    Write-SyncState $state
+
+    Write-Host 'Current cherry-pick aborted. Earlier applied commits were preserved.' -ForegroundColor Green
+    Write-Host "The same upstream commit remains next: index $($state.NextIndex)."
+    Write-Host 'Choose option 3 to retry, or option 12 to skip it.'
 }
 
 function Undo-PreviousSync {
@@ -1207,6 +1430,8 @@ try {
         Write-Host '9. Show repository status and recent commits'
         Write-Host '10. Switch active repository'
         Write-Host '11. Exit'
+        Write-Host '12. Skip the current upstream commit'
+        Write-Host '13. Abort the active cherry-pick (keep earlier sync commits)'
 
         $mode = Read-Host 'Select a task (1-11)'
 
@@ -1226,8 +1451,10 @@ try {
                     Write-Host 'Exit. No further operation was requested.'
                     return
                 }
+                '12' { Skip-CurrentUpstreamCommit }
+                '13' { Abort-CurrentCherryPick }
                 default {
-                    Write-Host 'Invalid selection. Choose a number from 1 to 11.' -ForegroundColor Yellow
+                    Write-Host 'Invalid selection. Choose a number from 1 to 13.' -ForegroundColor Yellow
                 }
             }
         }
